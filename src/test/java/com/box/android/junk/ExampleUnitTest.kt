@@ -1,4 +1,4 @@
-package com.chaoji.android.junk
+package com.box.android.junk
 
 import org.junit.Test
 
