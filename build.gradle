@@ -1,0 +1,272 @@
+apply plugin: 'com.android.library'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+project.ext.junkCodeConfig = [
+        enabled                : true,                    // 总开关
+        randomizePackageBase   : true,                   // true: 随机化基础包名, false: 使用下面的固定值
+        packageBase            : "com.cao.mo",          // 固定基础包名 (仅在上面开关为false时生效)
+        randomizeResPrefix     : true,                 // true: 随机化资源前缀, false: 使用下面的固定值
+        resPrefix              : "mo_",               // 固定资源前缀 (仅在上面开关为false时生效)
+        packageCount           : [100, 150],         // 将生成包的数量
+        activityCountPerPackage: [40, 90],         // 每个包下生成 Activity 的数量
+        otherCountPerPackage   : [10, 30],         // 每个包下生成类的数量
+        methodCountPerClass    : [10, 30],        // 每个类方法的数量
+        drawableCount          : [100, 150],     // 生成drawable资源的数量
+        layoutCount            : [100, 150],     // 生成layout资源的数量
+        stringCount            : [100, 150],   // 生成string的数量
+        randomNameLength       : [5, 15]      // 名称的随机长度
+]
+// =================================================================================
+// 辅助函数，用于从配置中获取随机数
+// =================================================================================
+/**
+ * 根据配置值获取一个随机数。
+ * @param value 可以是一个整数，也可以是一个 [min, max] 格式的列表。
+ * @return 最终计算出的数量。
+ */
+def getRandomCount(value) {
+    if (value instanceof List && value.size() == 2 && value[0] <= value[1]) {
+        return new Random().nextInt(value[1] - value[0] + 1) + value[0]
+    }
+    return value
+}
+
+def generateRandomString(int length) {
+    def chars = 'abcdefghijklmnopqrstuvwxyz'
+    def random = new Random()
+    return (1..length).collect { chars[random.nextInt(chars.length())] }.join()
+}
+
+task generateAllJunk(type: DefaultTask) {
+    group = "Junk Generator"
+    description = "Generates all junk code, resources, and manifest in a single task."
+    //return
+    doLast {
+        def isDebugBuild = gradle.startParameter.taskNames.any {
+            it.toLowerCase().contains('debug')
+        }
+        if (isDebugBuild) {
+            println "\033[40;33;4m--- JunkGenerator: Skipped for DEBUG build ---\033[0m"
+            return
+        }
+
+        if (!project.junkCodeConfig.enabled) {
+            return
+        }
+
+        def junkCodeDir = new File(project.buildDir, "generated/source/junkCode")
+        junkCodeDir.deleteDir()
+
+        println "\033[40;36;4m--- JunkGenerator: Starting single-task generation... ---\033[0m"
+
+        def resolved = [:]
+        def config = project.junkCodeConfig
+
+        resolved.layoutCount = getRandomCount(config.layoutCount)
+        resolved.packageCount = getRandomCount(config.packageCount)
+        resolved.activityCountPerPackage = getRandomCount(config.activityCountPerPackage)
+        resolved.otherCountPerPackage = getRandomCount(config.otherCountPerPackage)
+        resolved.methodCountPerClass = getRandomCount(config.methodCountPerClass)
+        resolved.drawableCount = getRandomCount(config.drawableCount)
+        resolved.stringCount = getRandomCount(config.stringCount)
+        resolved.randomNameLength = getRandomCount(config.randomNameLength)
+
+        if (config.randomizePackageBase) {
+            def part1 = generateRandomString(getRandomCount([3, 5]))
+            def part2 = generateRandomString(getRandomCount([4, 6]))
+            resolved.packageBase = "com.${part1}.${part2}"
+        } else {
+            resolved.packageBase = config.packageBase
+        }
+        if (config.randomizeResPrefix) {
+            resolved.resPrefix = generateRandomString(getRandomCount([3, 5])) + "_"
+        } else {
+            resolved.resPrefix = config.resPrefix
+        }
+        println "\033[40;32;4m--- JunkGenerator: Resolved Config -> packageBase: '${resolved.packageBase}', resPrefix: '${resolved.resPrefix}' ---\033[0m"
+
+        def preGeneratedNames = [packages: []]
+        resolved.packageCount.times {
+            def nameLength = resolved.randomNameLength
+            def randomPackageName = "${resolved.packageBase}.${generateRandomString(nameLength)}"
+            def packageInfo = [
+                    packageName : randomPackageName,
+                    activities  : [],
+                    otherClasses: []
+            ]
+            resolved.activityCountPerPackage.times {
+                def randomActivityBaseName = "Activity${generateRandomString(nameLength).capitalize()}"
+                packageInfo.activities.add([className: "${resolved.resPrefix}${randomActivityBaseName}"])
+            }
+            resolved.otherCountPerPackage.times {
+                def randomClassName = "${resolved.resPrefix}Other${generateRandomString(nameLength).capitalize()}"
+                def methodCount = resolved.methodCountPerClass
+                packageInfo.otherClasses.add([className: randomClassName, methodCount: methodCount])
+            }
+            preGeneratedNames.packages.add(packageInfo)
+        }
+        println "\033[40;32;4m--- JunkGenerator: Prepared ${preGeneratedNames.packages.size()} packages info ---\033[0m"
+
+        def javaOutDir = new File(junkCodeDir, "java")
+        preGeneratedNames.packages.each { packageInfo ->
+            def currentPackage = packageInfo.packageName
+            def packageDir = new File(javaOutDir, currentPackage.replace('.', '/'))
+            packageDir.mkdirs()
+
+            packageInfo.activities.each { activityInfo ->
+                def activityName = activityInfo.className
+                def fileContent = """
+package ${currentPackage};
+import android.os.Bundle;
+import androidx.appcompat.app.AppCompatActivity;
+public class ${activityName} extends AppCompatActivity {
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+    }
+}
+"""
+                new File(packageDir, "${activityName}.java").text = fileContent
+            }
+
+            packageInfo.otherClasses.each { classInfo ->
+                def className = classInfo.className
+                def methodCount = classInfo.methodCount
+                def methods = new StringBuilder()
+                methodCount.times { mIndex ->
+                    methods.append("""
+    public void performWork${mIndex}() { System.out.println("Work item ${mIndex} in ${className} executed."); }
+""")
+                }
+                def fileContent = """
+package ${currentPackage};
+public class ${className} {
+    ${methods.toString()}
+}
+"""
+                new File(packageDir, "${className}.java").text = fileContent
+            }
+        }
+        println "\033[40;32;4m--- JunkGenerator: Generated Java code ---\033[0m"
+
+        def resOutDir = new File(junkCodeDir, "res")
+        def random = new Random()
+        def layoutDir = new File(resOutDir, "layout"); layoutDir.mkdirs()
+        resolved.layoutCount.times { i ->
+            def layoutName = "${resolved.resPrefix}layout_$i"
+            def randomText = "Junk Layout for ${layoutName}"
+            def xmlContent = '<?xml version="1.0" encoding="utf-8"?>\n' +
+                    '<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center">\n' +
+                    '    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="' + randomText + '" />\n' +
+                    '</LinearLayout>'
+            new File(layoutDir, layoutName + ".xml").write(xmlContent, 'UTF-8')
+        }
+
+        def drawableDir = new File(resOutDir, "drawable"); drawableDir.mkdirs()
+        resolved.drawableCount.times { i ->
+            def color = String.format("#%06x", random.nextInt(0xFFFFFF + 1))
+            def xmlContent = '<shape xmlns:android="http://schemas.android.com/apk/res/android"><solid android:color="' + color + '"/></shape>'
+            new File(drawableDir, resolved.resPrefix + "drawable_" + i + ".xml").write(xmlContent, 'UTF-8')
+        }
+
+        def valuesDir = new File(resOutDir, "values"); valuesDir.mkdirs()
+        def stringsFile = new File(valuesDir, "${resolved.resPrefix}strings.xml")
+        stringsFile.withWriter('UTF-8') { writer ->
+            writer.writeLine("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>")
+            resolved.stringCount.times { i ->
+                writer.writeLine("    <string name=\"${resolved.resPrefix}string_$i\">${Long.toHexString(random.nextLong())}</string>")
+            }
+            writer.writeLine("</resources>")
+        }
+        println "\033[40;32;4m--- JunkGenerator: Generated ${resolved.layoutCount} layouts, ${resolved.drawableCount} drawables and ${resolved.stringCount} strings ---\033[0m"
+
+        def manifestOutFile = new File(junkCodeDir, "AndroidManifest.xml")
+        manifestOutFile.withWriter('UTF-8') { writer ->
+            writer.writeLine("<?xml version=\"1.0\" encoding=\"utf-8\"?>")
+            writer.writeLine("<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">")
+            writer.writeLine("    <application>")
+            preGeneratedNames.packages.each { packageInfo ->
+                def currentPackage = packageInfo.packageName
+                packageInfo.activities.each { activityInfo ->
+                    def activityName = activityInfo.className
+                    writer.writeLine("        <activity android:name=\"${currentPackage}.${activityName}\"/>")
+                }
+            }
+            writer.writeLine("    </application>")
+            writer.writeLine("</manifest>")
+        }
+        println "\033[40;32;4m--- JunkGenerator: Generated Manifest ---\033[0m"
+    }
+}
+
+
+android {
+    namespace 'com.chaoji.android.junk'
+    compileSdk 34
+    defaultConfig {
+        minSdkVersion 21
+        targetSdkVersion 31
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles "consumer-rules.pro"
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+
+    // =================================================================================
+    // 核心改动 1: Java 和 Manifest 在正常时机配置
+    // =================================================================================
+    sourceSets {
+        main {
+            def junkCodeDir = new File(project.buildDir, "generated/source/junkCode")
+            java.srcDirs += new File(junkCodeDir, "java")
+            manifest.srcFile new File(junkCodeDir, "AndroidManifest.xml")
+            // 注意：res.srcDirs 从这里移除了
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation libs.androidx.monitor
+    implementation libs.androidx.junit.ktx
+}
+
+// =================================================================================
+// 核心改动 2: 只将 res 的配置延迟执行，以防止被其他脚本覆盖
+// =================================================================================
+project.afterEvaluate {
+    if (project.plugins.hasPlugin('com.android.library')) {
+        android.sourceSets.main {
+            def junkCodeDir = new File(project.buildDir, "generated/source/junkCode")
+            res.srcDirs += new File(junkCodeDir, "res")
+        }
+    }
+}
+
+
+android.libraryVariants.all { variant ->
+    def variantName = variant.name.capitalize()
+    def javaCompileTaskName = "compile${variantName}JavaWithJavac"
+    def processManifestTaskName = "process${variantName}Manifest"
+    def processResourcesTaskName = "process${variantName}Resources"
+
+    tasks.findByName(javaCompileTaskName)?.dependsOn(generateAllJunk)
+    tasks.findByName(processResourcesTaskName)?.dependsOn(generateAllJunk)
+    tasks.findByName(processManifestTaskName)?.dependsOn(generateAllJunk)
+}
