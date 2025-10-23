@@ -24,20 +24,20 @@ project.ext.junkCodeConfig = [
  * @param value 可以是一个整数，也可以是一个 [min, max] 格式的列表。
  * @return 最终计算出的数量。
  */
-def getRandomCount(value) {
+static def getRandomCount(value) {
     if (value instanceof List && value.size() == 2 && value[0] <= value[1]) {
         return new Random().nextInt(value[1] - value[0] + 1) + value[0]
     }
     return value
 }
 
-def generateRandomString(int length) {
+static def generateRandomString(int length) {
     def chars = 'abcdefghijklmnopqrstuvwxyz'
     def random = new Random()
     return (1..length).collect { chars[random.nextInt(chars.length())] }.join()
 }
 
-task generateAllJunk(type: DefaultTask) {
+tasks.register('generateAllJunk', DefaultTask) {
     group = "Junk Generator"
     description = "Generates all junk code, resources, and manifest in a single task."
     //return
@@ -221,15 +221,12 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
-    }
-    kotlinOptions {
-        jvmTarget = '1.8'
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 
     // =================================================================================
-    // 核心改动 1: Java 和 Manifest 在正常时机配置
+    // Java 和 Manifest 在正常时机配置
     // =================================================================================
     sourceSets {
         main {
