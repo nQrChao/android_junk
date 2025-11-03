@@ -40,7 +40,7 @@ static def generateRandomString(int length) {
 tasks.register('generateAllJunk', DefaultTask) {
     group = "Junk Generator"
     description = "Generates all junk code, resources, and manifest in a single task."
-    //return
+    return
     doLast {
         def isDebugBuild = gradle.startParameter.taskNames.any {
             it.toLowerCase().contains('debug')
