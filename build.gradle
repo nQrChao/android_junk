@@ -204,7 +204,7 @@ android {
     namespace 'com.chaoji.android.junk'
     compileSdk 34
     defaultConfig {
-        minSdkVersion 21
+        minSdkVersion 23
         targetSdkVersion 31
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles "consumer-rules.pro"
